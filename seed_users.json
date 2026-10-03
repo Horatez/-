@@ -1,0 +1,6 @@
+[
+  {"login": "admin", "name": "Администратор", "role": "admin", "password": "admin-demo-2026"},
+  {"login": "analyst", "name": "Аналитик", "role": "analyst", "password": "analyst-demo-2026"},
+  {"login": "director", "name": "Руководитель", "role": "viewer", "password": "director-demo-2026"},
+  {"login": "dev", "name": "Сопровождающий разработчик", "role": "maintainer", "password": "dev-demo-2026"}
+]
