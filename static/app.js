@@ -61,7 +61,29 @@ function toast(msg, err) {
   toast.timer = setTimeout(() => { t.hidden = true; }, err ? 6000 : 3000);
 }
 
+/* Без сервера (GitHub Pages) запросы обслуживает LocalAPI из local.js. */
+const LOCAL = typeof LocalAPI !== 'undefined';
+
+function saveBlob(blob, filename) {
+  const a = document.createElement('a');
+  a.href = URL.createObjectURL(blob);
+  a.download = filename;
+  a.click();
+  setTimeout(() => URL.revokeObjectURL(a.href), 5000);
+}
+/* Кнопка скачивания: на сервере — обычная ссылка, без сервера — файл собирается в браузере. */
+function dl(text, url) {
+  if (!LOCAL) return h('a', { class: 'btn', href: url }, text);
+  return h('button', { onclick: act(async () => {
+    const { blob, filename } = await LocalAPI.download(url);
+    saveBlob(blob, filename);
+  }) }, text);
+}
+
 async function api(method, url, body) {
+  if (LOCAL) {
+    try { return await LocalAPI.request(method, url, body); } catch (e) { throw new Error(e.message); }
+  }
   const init = { method, headers: {} };
   if (method !== 'GET') {
     init.headers = { 'Content-Type': 'application/json', 'X-Requested-With': 'fetch' };
@@ -137,12 +159,12 @@ function sidebar(active) {
     h('div', { class: 'brand' }, 'Отраслевой аналитический конструктор'),
     link('companies', 'Предприятия'),
     link('refs', 'Справочники'),
-    S.user.role === 'admin' && link('users', 'Пользователи'),
-    seesLog() && link('audit', 'Журнал и копии'),
+    !LOCAL && S.user.role === 'admin' && link('users', 'Пользователи'),
+    seesLog() && link('audit', LOCAL ? 'Журнал и копия данных' : 'Журнал и копии'),
     h('div', { class: 'who' },
       h('div', {}, h('b', {}, S.user.name)),
       h('div', { class: 'muted' }, S.user.role_name),
-      h('div', { style: 'margin-top:6px; display:flex; gap:10px' },
+      LOCAL ? h('div', { class: 'muted', style: 'margin-top:6px' }, 'Данные хранятся только в этом браузере') : h('div', { style: 'margin-top:6px; display:flex; gap:10px' },
         h('button', { class: 'link', onclick: passwordDialog }, 'Пароль'),
         h('button', { class: 'link', onclick: act(async () => {
           await api('POST', '/api/logout');
@@ -396,8 +418,8 @@ function gridTab(formKey) {
         toast('Данные сохранены');
       }) }, 'Сохранить'),
       !ro && h('button', { onclick: () => importer.click() }, 'Импорт из Excel / CSV'), importer,
-      h('a', { class: 'btn', href: `/api/companies/${c.id}/source.xlsx` }, 'Шаблон / выгрузка Excel'),
-      h('a', { class: 'btn', href: `/api/companies/${c.id}/source.csv` }, 'Исходные данные CSV'),
+      dl('Шаблон / выгрузка Excel', `/api/companies/${c.id}/source.xlsx`),
+      dl('Исходные данные CSV', `/api/companies/${c.id}/source.csv`),
       h('span', { class: 'sp' }),
       h('span', { class: 'muted small' }, formKey === 'extra' ? '' : `Единицы: ${c.unit} ${c.currency}. Расходы вводятся положительными числами.`)),
     status,
@@ -554,8 +576,8 @@ function reportTab(c) {
         S.runs.map(r => opt(r.id, `№ ${r.id} от ${r.created_at.replace('T', ' ')}`)))),
       h('span', { class: 'sp' }),
       h('button', { onclick: () => { const old = document.title; document.title = `Отчёт — ${t.company}`; window.print(); document.title = old; } }, 'PDF (печать)'),
-      h('a', { class: 'btn', href: `/api/runs/${run.run_id}/export.xlsx` }, 'Excel'),
-      h('a', { class: 'btn', href: `/api/companies/${c.id}/source.csv` }, 'CSV (исходные данные)')),
+      dl('Excel', `/api/runs/${run.run_id}/export.xlsx`),
+      dl('CSV (исходные данные)', `/api/companies/${c.id}/source.csv`)),
     h('div', { class: 'card' },
       h('h1', {}, 'Сводный аналитический отчёт'),
       h('dl', { class: 'title', style: 'margin-top:10px' }, [
@@ -697,7 +719,7 @@ function dashboardTab(c) {
       field('Размер бизнеса', h('select', { value: D.size, onchange: e => { D.size = e.target.value; rebase(); } }, S.meta.sizes.map(i => opt(i.code, i.name)))),
       h('span', { class: 'sp' }),
       h('button', { onclick: act(() => Charts.png(area, `dashboard-${t.inn}-${Y}.png`)) }, 'Экспорт PNG'),
-      h('a', { class: 'btn', href: `/api/runs/${S.run.run_id}/export.xlsx` }, 'Excel'),
+      dl('Excel', `/api/runs/${S.run.run_id}/export.xlsx`),
       h('a', { class: 'btn', href: `#/company/${c.id}/report` }, 'Отчёт / PDF')),
     h('details', { class: 'no-print', style: 'margin-bottom:12px' },
       h('summary', { class: 'small' }, `Показатели на дашборде (${visible.length} из ${run.indicators.length})`),
@@ -717,7 +739,14 @@ function historyTab(c) {
         const p = JSON.parse(r.params);
         return h('tr', {}, h('td', {}, r.id), h('td', {}, r.created_at.replace('T', ' ')), h('td', {}, r.user_login),
           h('td', {}, r.ref_version), h('td', {}, r.engine_version), h('td', {}, BASIS[p.basis]),
-          h('td', {}, h('button', { class: 'link', onclick: act(async () => { S.run = await api('GET', `/api/runs/${r.id}`); S.preview = null; S.reportYear = null; go(`#/company/${c.id}/report`); }) }, 'Открыть отчёт')));
+          h('td', {}, h('button', { class: 'link', onclick: act(async () => { S.run = await api('GET', `/api/runs/${r.id}`); S.preview = null; S.reportYear = null; go(`#/company/${c.id}/report`); }) }, 'Открыть отчёт'),
+            LOCAL && canWrite() && [' · ', h('button', { class: 'link danger', onclick: act(async () => {
+              if (!confirm(`Удалить расчёт № ${r.id}?`)) return;
+              await api('DELETE', `/api/runs/${r.id}`);
+              S.runs = await api('GET', `/api/companies/${c.id}/runs`);
+              if (S.run && S.run.run_id === r.id) S.run = S.runs.length ? await api('GET', `/api/runs/${S.runs[0].id}`) : null;
+              render();
+            }) }, 'Удалить')]));
       }) : h('tr', {}, h('td', { colspan: 7, class: 'muted' }, 'Расчётов пока нет'))))));
 }
 
@@ -748,7 +777,7 @@ async function refsView() {
       field('Отрасль', h('select', { value: R.industry, onchange: e => { R.industry = e.target.value; render(); } }, S.meta.industries.map(i => opt(i.code, i.name)))),
       field('Размер бизнеса', h('select', { value: R.size, onchange: e => { R.size = e.target.value; render(); } }, S.meta.sizes.map(i => opt(i.code, i.name)))),
       h('span', { class: 'sp' }),
-      h('a', { class: 'btn', href: `/api/ref/benchmarks.csv?version=${R.version}` }, 'Выгрузить версию в CSV'),
+      dl('Выгрузить версию в CSV', `/api/ref/benchmarks.csv?version=${R.version}`),
       !ro && h('button', { onclick: () => importer.click() }, 'Загрузить CSV / Excel как новую версию'), importer),
     h('p', { class: 'muted small' }, `${ver.label} · создана ${ver.created_at.replace('T', ' ')} (${ver.created_by})${ver.comment ? ' · ' + ver.comment : ''}`),
     h('div', { class: 'tw' }, h('table', { class: 'grid' },
@@ -830,6 +859,7 @@ async function usersView() {
 }
 
 async function auditView() {
+  if (LOCAL) return localDataView();
   const [log, backups] = await Promise.all([api('GET', '/api/audit?limit=500'), api('GET', '/api/backups')]);
   return [h('h1', {}, 'Журнал действий и резервные копии'),
     h('h2', {}, 'Резервные копии базы данных'),
@@ -843,6 +873,32 @@ async function auditView() {
       h('thead', {}, h('tr', {}, ['Время', 'Пользователь', 'Роль', 'Действие', 'Объект', 'Детали'].map(t => h('th', {}, t)))),
       h('tbody', {}, log.map(a => h('tr', {}, h('td', { class: 'num' }, a.ts.replace('T', ' ')), h('td', {}, a.login || '—'),
         h('td', {}, S.meta.roles[a.role] || '—'), h('td', {}, a.action),
+        h('td', {}, [a.entity, a.entity_id].filter(Boolean).join(' ')), h('td', { class: 'muted small' }, a.details || ''))))))];
+}
+
+/* Режим без сервера: копия данных вместо резервных копий на сервере. */
+async function localDataView() {
+  const log = await api('GET', '/api/audit?limit=500');
+  const restorer = filePicker('.json', async file => {
+    if (!confirm('Заменить все данные в этом браузере данными из файла?')) return;
+    LocalAPI.restore(await file.text());
+    S.company = null; await reloadMeta(); toast('Данные восстановлены'); render();
+  });
+  return [h('h1', {}, 'Журнал и копия данных'),
+    h('div', { class: 'note' }, 'Программа работает без сервера: все предприятия, расчёты и справочники хранятся только в этом браузере на этом компьютере. ',
+      'Очистка данных браузера их удалит, а другие пользователи их не видят. Регулярно сохраняйте копию в файл.'),
+    h('div', { class: 'bar' },
+      dl('Скачать копию данных (JSON)', '/api/backup.json'),
+      h('button', { onclick: () => restorer.click() }, 'Восстановить из файла'), restorer,
+      h('button', { class: 'danger', onclick: act(async () => {
+        if (!confirm('Удалить все данные в этом браузере и вернуть учебный пример? Отменить это нельзя.')) return;
+        LocalAPI.reset(); S.company = null; await reloadMeta(); toast('Данные сброшены'); render();
+      }) }, 'Сбросить к учебному примеру'),
+      h('span', { class: 'muted small' }, `Занято в хранилище браузера: ${num(LocalAPI.usage() / 1024, 0)} КБ из ~5 000 КБ`)),
+    h('h2', {}, 'Журнал (последние 500 записей)'),
+    h('div', { class: 'tw' }, h('table', {},
+      h('thead', {}, h('tr', {}, ['Время', 'Действие', 'Объект', 'Детали'].map(t => h('th', {}, t)))),
+      h('tbody', {}, log.map(a => h('tr', {}, h('td', { class: 'num' }, a.ts.replace('T', ' ')), h('td', {}, a.action),
         h('td', {}, [a.entity, a.entity_id].filter(Boolean).join(' ')), h('td', { class: 'muted small' }, a.details || ''))))))];
 }
 

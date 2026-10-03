@@ -1,0 +1,20 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Отраслевой аналитический конструктор</title>
+<meta name="description" content="Показатели предприятия, сравнение с отраслью, динамика. Работает в браузере, данные хранятся локально.">
+<link rel="stylesheet" href="static/app.css">
+</head>
+<body>
+<!-- Версия для GitHub Pages: без сервера, данные хранятся в браузере (static/local.js).
+     Серверная версия с ролями и общей базой: python3 server.py -->
+<div id="app"></div>
+<div id="tip" role="tooltip" hidden></div>
+<div id="toast" role="status" hidden></div>
+<script src="static/charts.js"></script>
+<script src="static/local.js"></script>
+<script src="static/app.js"></script>
+</body>
+</html>
